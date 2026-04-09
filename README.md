@@ -1,28 +1,26 @@
-# sv
+# Grade Calculator
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Grade calculator built with Svelte and Tailwind.
 
-## Creating a project
+https://kylefeng28.github.io/grade-calculator/
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Usage
 
-```sh
-# create a new project
-npx sv create my-app
-```
+- Enter **grade category** weights (e.g. Quizzes 25%, Midterms 30%, Assignments 15%, Final Exam 30%)
+- Enter **grade entries** with category and grade (e.g. Quiz 1 in category "Quizzes" with grade 95%, Quiz 2 in category Quizzes with grade 92%, etc)
+- The calculated **weighted overall grade** will be shown
+- **"What do I need"** feature: mark an entry as "Calculate" to find out what score you need to hit a target grade
 
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-bun x sv@0.15.0 create --template minimal --types ts --add tailwindcss="plugins:typography,forms" vitest="usages:component,unit" --install bun grade-calculator
-```
+Other features:
+- Drag-and-drop reordering for grade entries
+- Persistent storage via `localStorage`
+- Import/Export JSON (export to/import from file, or copy/paste from text box)
+- URL sharing (click "Copy Link")
 
 ## Developing
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
 ```sh
+npm install
 npm run dev
 
 # or start the server and open the app in a new browser tab
@@ -38,5 +36,3 @@ npm run build
 ```
 
 You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
