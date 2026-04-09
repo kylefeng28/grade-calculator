@@ -17,7 +17,9 @@ import {
 	getCalculateEntries,
 	calculateNeededScore,
 	moveCategoryByIndex,
-	moveEntryByIndex
+	moveEntryByIndex,
+	encodeToUrlParam,
+	loadFromUrlParam
 } from './grades.svelte';
 
 // Note: since the store uses module-level $state, tests share state.
@@ -257,5 +259,33 @@ describe('reordering', () => {
 
 		moveCategoryByIndex(0, 99);
 		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B']);
+	});
+});
+
+describe('URL sharing', () => {
+	it('round-trips data through encode/decode', () => {
+		resetAll();
+		addCategory('Quizzes', 40);
+		addCategory('Final', 60);
+		const [q, f] = getCategories();
+		addEntry('Quiz 1', q.id, 85);
+		addEntry('Final Exam', f.id, null);
+
+		const encoded = encodeToUrlParam();
+		expect(typeof encoded).toBe('string');
+		expect(encoded.length).toBeGreaterThan(0);
+
+		resetAll();
+		expect(getCategories().length).toBe(0);
+
+		loadFromUrlParam(encoded);
+		expect(getCategories().map((c) => c.name)).toEqual(['Quizzes', 'Final']);
+		expect(getEntries().length).toBe(2);
+		expect(getEntries().find((e) => e.name === 'Quiz 1')?.score).toBe(85);
+		expect(getEntries().find((e) => e.name === 'Final Exam')?.score).toBeNull();
+	});
+
+	it('rejects invalid encoded data', () => {
+		expect(() => loadFromUrlParam('not-valid-base64!!')).toThrow();
 	});
 });

@@ -11,6 +11,7 @@ function genId(): string {
 interface StoredData {
 	categories: GradeCategory[];
 	entries: GradeEntry[];
+	targetGrade?: number;
 }
 
 function loadFromStorage(): StoredData {
@@ -30,20 +31,22 @@ function loadFromStorage(): StoredData {
 
 function saveToStorage(): void {
 	if (!browser) return;
-	localStorage.setItem(STORAGE_KEY, JSON.stringify({ categories, entries }));
+	localStorage.setItem(STORAGE_KEY, JSON.stringify({ categories, entries, targetGrade }));
 }
 
 const initial = loadFromStorage();
 let categories = $state<GradeCategory[]>(initial.categories);
 let entries = $state<GradeEntry[]>(initial.entries);
+let targetGrade = $state<number>(initial.targetGrade ?? 70);
 
 $effect.root(() => {
 	$effect(() => {
-		// Touch both arrays to track them, then persist
+		// Touch reactive values to track them, then persist
 		void categories.length;
 		void entries.length;
 		void JSON.stringify(categories);
 		void JSON.stringify(entries);
+		void targetGrade;
 		saveToStorage();
 	});
 });
@@ -100,6 +103,14 @@ export function getOverallGrade(): number {
 	return overallGrade;
 }
 
+export function getTargetGrade(): number {
+	return targetGrade;
+}
+
+export function setTargetGrade(value: number): void {
+	targetGrade = value;
+}
+
 export function addCategory(name: string, weight: number): void {
 	categories.push({ id: genId(), name, weight });
 }
@@ -153,10 +164,11 @@ export function moveEntryByIndex(fromIndex: number, toIndex: number): void {
 export function resetAll(): void {
 	categories = [];
 	entries = [];
+	targetGrade = 70;
 }
 
 export function exportData(): string {
-	return JSON.stringify({ categories, entries }, null, 2);
+	return JSON.stringify({ categories, entries, targetGrade }, null, 2);
 }
 
 export function importData(json: string): void {
@@ -166,6 +178,22 @@ export function importData(json: string): void {
 	}
 	categories = data.categories;
 	entries = data.entries;
+	targetGrade = data.targetGrade ?? 70;
+}
+
+export function encodeToUrlParam(): string {
+	return btoa(JSON.stringify({ categories, entries, targetGrade }));
+}
+
+export function loadFromUrlParam(encoded: string): void {
+	const json = atob(encoded);
+	const data = JSON.parse(json) as StoredData;
+	if (!Array.isArray(data.categories) || !Array.isArray(data.entries)) {
+		throw new Error('Invalid data format');
+	}
+	categories = data.categories;
+	entries = data.entries;
+	targetGrade = data.targetGrade ?? 70;
 }
 
 export function getCalculateEntries(): GradeEntry[] {

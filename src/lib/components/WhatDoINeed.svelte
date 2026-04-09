@@ -2,13 +2,13 @@
 	import {
 		getCalculateEntries,
 		getCategories,
+		getTargetGrade,
+		setTargetGrade,
 		calculateNeededScore
 	} from '$lib/stores/grades.svelte';
 
-	let targetGrade = $state(70);
-
 	const calcEntries = $derived(getCalculateEntries());
-	const neededScore = $derived(calculateNeededScore(targetGrade));
+	const neededScore = $derived(calculateNeededScore(getTargetGrade()));
 
 	function categoryName(categoryId: string): string {
 		return getCategories().find((c) => c.id === categoryId)?.name ?? 'Unknown';
@@ -40,7 +40,8 @@
 					<input
 						id="target-grade"
 						type="number"
-						bind:value={targetGrade}
+						value={getTargetGrade()}
+						oninput={(e) => setTargetGrade(Number((e.target as HTMLInputElement).value))}
 						min="0"
 						max="100"
 						step="any"
@@ -63,7 +64,7 @@
 				</p>
 			{:else if neededScore < 0}
 				<p class="text-sm text-green-600">
-					You've already surpassed this target! Even scoring 0% would give you above {targetGrade}%.
+					You've already surpassed this target! Even scoring 0% would give you above {getTargetGrade()}%.
 				</p>
 			{:else}
 				<p class="text-2xl font-bold text-amber-700">
@@ -76,7 +77,7 @@
 					{:else}
 						on each remaining item
 					{/if}
-					to achieve an overall grade of {targetGrade}%.
+					to achieve an overall grade of {getTargetGrade()}%.
 				</p>
 			{/if}
 		</div>
