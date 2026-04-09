@@ -98,6 +98,7 @@
 					type="text"
 					bind:value={newName}
 					placeholder="e.g. Quiz 1"
+					required
 					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 				/>
 			</div>
@@ -106,6 +107,7 @@
 				<select
 					id="entry-category"
 					bind:value={newCategoryId}
+					required
 					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
 				>
 					<option value="">Select...</option>
