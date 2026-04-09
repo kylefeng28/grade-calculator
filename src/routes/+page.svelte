@@ -4,12 +4,14 @@
 	import ClassTabs from '$lib/components/ClassTabs.svelte';
 	import CategoryManager from '$lib/components/CategoryManager.svelte';
 	import GradeManager from '$lib/components/GradeManager.svelte';
+	import ScenarioManager from '$lib/components/ScenarioManager.svelte';
 	import WhatDoINeed from '$lib/components/WhatDoINeed.svelte';
 	import DataModal from '$lib/components/DataModal.svelte';
 	import {
 		getOverallGrade,
 		getCategories,
 		getClasses,
+		getWhatIfEntries,
 		resetAll,
 		encodeToUrlParam,
 		loadFromUrlParam
@@ -83,8 +85,6 @@
 			<GradeManager />
 		</div>
 
-		<WhatDoINeed />
-
 		{#if !Number.isNaN(getOverallGrade())}
 			<div class="rounded-lg bg-indigo-50 p-6 shadow">
 				<h2 class="text-xl font-semibold text-gray-800">Overall Grade</h2>
@@ -92,10 +92,18 @@
 					{getOverallGrade().toFixed(1)}%
 				</p>
 				<p class="mt-1 text-sm text-gray-500">
-					Weighted average across categories with grades entered
+					Weighted average across categories with current grades entered (not taking into account what-if scenarios)
 				</p>
 			</div>
 		{/if}
+
+		{#if getWhatIfEntries().length > 0}
+			<div class="rounded-lg bg-white p-6 shadow">
+				<ScenarioManager />
+			</div>
+		{/if}
+
+		<WhatDoINeed />
 	</div>
 </div>
 

@@ -1,5 +1,12 @@
 import { browser } from '$app/environment';
-import type { GradeCategory, GradeEntry, ClassData, AppData } from '$lib/types';
+import type {
+	GradeCategory,
+	GradeEntry,
+	EntryMode,
+	Scenario,
+	ClassData,
+	AppData
+} from '$lib/types';
 
 const STORAGE_KEY = 'grade-calculator-data';
 
@@ -9,7 +16,7 @@ function genId(): string {
 }
 
 function createEmptyClass(name: string): ClassData {
-	return { id: genId(), name, categories: [], entries: [], targetGrade: 70 };
+	return { id: genId(), name, categories: [], entries: [], targetGrade: 70, scenarios: [] };
 }
 
 function isSingleClassData(data: unknown): data is ClassData {
@@ -30,13 +37,22 @@ function isValidAppData(data: unknown): data is AppData {
 	);
 }
 
+/**
+ * Normalize a ClassData object to ensure all fields exist.
+ * Handles migration from older formats (e.g. entries without mode, classes without scenarios).
+ */
 function normalizeClassData(data: ClassData): ClassData {
 	return {
 		id: data.id || genId(),
 		name: data.name || 'My Class',
 		categories: data.categories,
-		entries: data.entries,
-		targetGrade: data.targetGrade ?? 70
+		entries: data.entries.map((e) => ({
+			...e,
+			// Migration: infer mode from score if mode field is absent
+			mode: e.mode ?? (e.score === null ? 'calculate' : 'normal')
+		})),
+		targetGrade: data.targetGrade ?? 70,
+		scenarios: data.scenarios ?? []
 	};
 }
 
@@ -55,8 +71,9 @@ function loadFromStorage(): AppData {
 		if (isSingleClassData(data)) {
 			const cls = normalizeClassData(data);
 			return { classes: [cls], activeClassId: cls.id };
-		}
-		else if (isValidAppData(data)) {
+		} else if (isValidAppData(data)) {
+			// Normalize each class for migration
+			data.classes = data.classes.map(normalizeClassData);
 			return data;
 		}
 		const c = createEmptyClass('My Class');
@@ -92,6 +109,7 @@ function getActiveClass(): ClassData {
 }
 
 // --- Derived values (scoped to active class) ---
+// Only normal entries with scores contribute to the "real" grade.
 
 const totalWeight = $derived(getActiveClass().categories.reduce((sum, c) => sum + c.weight, 0));
 
@@ -99,7 +117,9 @@ const categoryAverages = $derived.by(() => {
 	const ac = getActiveClass();
 	const map = new Map<string, number>();
 	for (const cat of ac.categories) {
-		const scored = ac.entries.filter((e) => e.categoryId === cat.id && e.score !== null);
+		const scored = ac.entries.filter(
+			(e) => e.categoryId === cat.id && e.mode === 'normal' && e.score !== null
+		);
 		if (scored.length === 0) {
 			map.set(cat.id, NaN);
 		} else {
@@ -215,27 +235,79 @@ export function updateCategory(id: string, name: string, weight: number): void {
 
 // --- Entry CRUD (active class) ---
 
-export function addEntry(name: string, categoryId: string, score: number | null): void {
-	getActiveClass().entries.push({ id: genId(), name, categoryId, score });
+export function addEntry(
+	name: string,
+	categoryId: string,
+	score: number | null,
+	mode: EntryMode = 'normal'
+): void {
+	getActiveClass().entries.push({ id: genId(), name, categoryId, score, mode });
 }
 
 export function removeEntry(id: string): void {
 	const ac = getActiveClass();
 	ac.entries = ac.entries.filter((e) => e.id !== id);
+	// Clean up scenario references to this entry
+	for (const scenario of ac.scenarios) {
+		delete scenario.scores[id];
+	}
 }
 
 export function updateEntry(
 	id: string,
 	name: string,
 	categoryId: string,
-	score: number | null
+	score: number | null,
+	mode: EntryMode = 'normal'
 ): void {
 	const entry = getActiveClass().entries.find((e) => e.id === id);
 	if (entry) {
+		const oldMode = entry.mode;
 		entry.name = name;
 		entry.categoryId = categoryId;
 		entry.score = score;
+		entry.mode = mode;
+		// If mode changed away from whatif, clean up scenario scores for this entry
+		if (oldMode === 'whatif' && mode !== 'whatif') {
+			for (const scenario of getActiveClass().scenarios) {
+				delete scenario.scores[id];
+			}
+		}
 	}
+}
+
+// --- Scenario CRUD (active class) ---
+
+export function getScenarios(): Scenario[] {
+	return getActiveClass().scenarios;
+}
+
+export function addScenario(name: string): string {
+	const id = genId();
+	// Pre-populate with 0 for all existing what-if entries
+	const scores: Record<string, number> = {};
+	for (const entry of getActiveClass().entries) {
+		if (entry.mode === 'whatif') {
+			scores[entry.id] = 0;
+		}
+	}
+	getActiveClass().scenarios.push({ id, name, scores });
+	return id;
+}
+
+export function removeScenario(id: string): void {
+	const ac = getActiveClass();
+	ac.scenarios = ac.scenarios.filter((s) => s.id !== id);
+}
+
+export function renameScenario(id: string, name: string): void {
+	const s = getActiveClass().scenarios.find((s) => s.id === id);
+	if (s) s.name = name;
+}
+
+export function setScenarioScore(scenarioId: string, entryId: string, score: number): void {
+	const s = getActiveClass().scenarios.find((s) => s.id === scenarioId);
+	if (s) s.scores[entryId] = score;
 }
 
 // --- Reordering (active class) ---
@@ -270,7 +342,13 @@ export function resetAll(): void {
 export function exportSingleClassData(): string {
 	const ac = getActiveClass();
 	return JSON.stringify(
-		{ name: ac.name, categories: ac.categories, entries: ac.entries, targetGrade: ac.targetGrade },
+		{
+			name: ac.name,
+			categories: ac.categories,
+			entries: ac.entries,
+			targetGrade: ac.targetGrade,
+			scenarios: ac.scenarios
+		},
 		null,
 		2
 	);
@@ -290,15 +368,16 @@ export function exportAllData(): string {
 export function importData(json: string): void {
 	const data = JSON.parse(json);
 	if (isSingleClassData(data)) {
+		const normalized = normalizeClassData(data);
 		const ac = getActiveClass();
-		ac.name = data.name;
-		ac.categories = data.categories;
-		ac.entries = data.entries;
-		ac.targetGrade = data.targetGrade ?? 70;
+		ac.name = normalized.name;
+		ac.categories = normalized.categories;
+		ac.entries = normalized.entries;
+		ac.targetGrade = normalized.targetGrade;
+		ac.scenarios = normalized.scenarios;
 		return;
-	}
-	else if (isValidAppData(data)) {
-		classes = data.classes;
+	} else if (isValidAppData(data)) {
+		classes = data.classes.map(normalizeClassData);
 		activeClassId = data.activeClassId;
 		// Ensure activeClassId points to a valid class
 		if (!classes.some((c) => c.id === activeClassId)) {
@@ -326,9 +405,8 @@ export function loadFromUrlParam(encoded: string): void {
 		classes = [cls];
 		activeClassId = cls.id;
 		return;
-	}
-	else if (isValidAppData(data)) {
-		classes = data.classes;
+	} else if (isValidAppData(data)) {
+		classes = data.classes.map(normalizeClassData);
 		activeClassId = data.activeClassId;
 		if (!classes.some((c) => c.id === activeClassId)) {
 			activeClassId = classes[0].id;
@@ -341,19 +419,24 @@ export function loadFromUrlParam(encoded: string): void {
 // --- What do I need ---
 
 export function getCalculateEntries(): GradeEntry[] {
-	return getActiveClass().entries.filter((e) => e.score === null);
+	return getActiveClass().entries.filter((e) => e.mode === 'calculate');
+}
+
+export function getWhatIfEntries(): GradeEntry[] {
+	return getActiveClass().entries.filter((e) => e.mode === 'whatif');
 }
 
 /**
- * Solves for the score X that all "calculate" entries (score === null) need
+ * Solves for the score X that all "calculate" entries need
  * so that the overall weighted grade equals `targetGrade`.
+ * This is the baseline calculation — what-if entries are excluded.
  *
  * Returns the needed score, or NaN if it can't be solved
  * (e.g. no calculate entries, or no categories with weight).
  */
 export function calculateNeededScore(targetGrade: number): number {
 	const ac = getActiveClass();
-	const calcEntries = ac.entries.filter((e) => e.score === null);
+	const calcEntries = ac.entries.filter((e) => e.mode === 'calculate');
 	if (calcEntries.length === 0) return NaN;
 
 	// For each category, compute:
@@ -371,12 +454,15 @@ export function calculateNeededScore(targetGrade: number): number {
 	let weightUsed = 0;
 
 	for (const cat of ac.categories) {
-		const catEntries = ac.entries.filter((e) => e.categoryId === cat.id);
+		// Exclude what-if entries from baseline calculation
+		const catEntries = ac.entries.filter(
+			(e) => e.categoryId === cat.id && e.mode !== 'whatif'
+		);
 		if (catEntries.length === 0) continue;
 
-		const knownScored = catEntries.filter((e) => e.score !== null);
+		const knownScored = catEntries.filter((e) => e.mode === 'normal' && e.score !== null);
 		const knownSum = knownScored.reduce((sum, e) => sum + e.score!, 0);
-		const calcCount = catEntries.filter((e) => e.score === null).length;
+		const calcCount = catEntries.filter((e) => e.mode === 'calculate').length;
 		const totalCount = catEntries.length;
 		const w = cat.weight / 100;
 
@@ -392,6 +478,105 @@ export function calculateNeededScore(targetGrade: number): number {
 	// overall = ((A*X + B) / weightUsed) * 100
 	// targetGrade = ((A*X + B) / weightUsed) * 100
 	// targetGrade * weightUsed / 100 = A*X + B
+	const target = (targetGrade * weightUsed) / 100;
+	return (target - B) / A;
+}
+
+/**
+ * Computes the overall grade for a scenario, treating what-if scores
+ * as real and ignoring calculate entries.
+ */
+export function getScenarioOverallGrade(scenarioId: string): number {
+	const ac = getActiveClass();
+	const scenario = ac.scenarios.find((s) => s.id === scenarioId);
+	if (!scenario) return NaN;
+
+	let weightedSum = 0;
+	let weightUsed = 0;
+
+	for (const cat of ac.categories) {
+		const catEntries = ac.entries.filter((e) => e.categoryId === cat.id);
+		let sum = 0;
+		let count = 0;
+
+		for (const e of catEntries) {
+			if (e.mode === 'normal' && e.score !== null) {
+				sum += e.score;
+				count++;
+			} else if (e.mode === 'whatif' && scenario.scores[e.id] !== undefined) {
+				sum += scenario.scores[e.id];
+				count++;
+			}
+			// calculate entries are excluded from this tally
+		}
+
+		if (count === 0) continue;
+		const avg = sum / count;
+		weightedSum += avg * (cat.weight / 100);
+		weightUsed += cat.weight;
+	}
+
+	if (weightUsed === 0) return NaN;
+	return (weightedSum / weightUsed) * 100;
+}
+
+/**
+ * Solves for the score X that all "calculate" entries need so that the
+ * overall weighted grade equals `targetGrade`, given a specific scenario's
+ * what-if scores applied.
+ *
+ * Returns the needed score, or NaN if it can't be solved.
+ */
+export function calculateNeededScoreForScenario(
+	targetGrade: number,
+	scenarioId: string
+): number {
+	const ac = getActiveClass();
+	const scenario = ac.scenarios.find((s) => s.id === scenarioId);
+	if (!scenario) return NaN;
+
+	const calcEntries = ac.entries.filter((e) => e.mode === 'calculate');
+	if (calcEntries.length === 0) return NaN;
+
+	let A = 0;
+	let B = 0;
+	let weightUsed = 0;
+
+	for (const cat of ac.categories) {
+		const catEntries = ac.entries.filter((e) => e.categoryId === cat.id);
+		if (catEntries.length === 0) continue;
+
+		let knownSum = 0;
+		let calcCount = 0;
+		let totalCount = 0;
+
+		for (const e of catEntries) {
+			if (e.mode === 'normal' && e.score !== null) {
+				knownSum += e.score;
+				totalCount++;
+			} else if (e.mode === 'calculate') {
+				calcCount++;
+				totalCount++;
+			} else if (e.mode === 'whatif') {
+				const scenarioScore = scenario.scores[e.id];
+				if (scenarioScore !== undefined) {
+					knownSum += scenarioScore;
+					totalCount++;
+				}
+				// If no score in this scenario, entry is simply not counted
+			}
+		}
+
+		if (totalCount === 0) continue;
+
+		const w = cat.weight / 100;
+		B += (knownSum * w) / totalCount;
+		A += (calcCount * w) / totalCount;
+		weightUsed += cat.weight;
+	}
+
+	if (weightUsed === 0 || A === 0) return NaN;
+
 	const target = (targetGrade * weightUsed) / 100;
 	return (target - B) / A;
 }
