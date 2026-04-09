@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
 	getCategories,
 	getEntries,
@@ -12,35 +12,47 @@ import {
 	removeEntry,
 	updateEntry,
 	resetAll,
-	exportData,
+	exportSingleClassData,
+	exportAllData,
 	importData,
 	getCalculateEntries,
 	calculateNeededScore,
 	moveCategoryByIndex,
 	moveEntryByIndex,
 	encodeToUrlParam,
-	loadFromUrlParam
+	loadFromUrlParam,
+	getClasses,
+	getActiveClassId,
+	setActiveClass,
+	addClass,
+	renameClass,
+	removeClass,
+	getTargetGrade,
+	setTargetGrade
 } from './grades.svelte';
 
 // Note: since the store uses module-level $state, tests share state.
 // We rely on ordering here; a reset function could be added if needed.
 
 describe('grades store', () => {
-	it('starts empty', () => {
-		// Clean slate from module load in test environment
-		expect(getCategories().length).toBeGreaterThanOrEqual(0);
+	it('starts with one default class', () => {
+		resetAll();
+		expect(getClasses().length).toBe(1);
+		expect(getCategories().length).toBe(0);
 	});
 
 	it('can add and retrieve categories', () => {
-		const before = getCategories().length;
+		resetAll();
 		addCategory('Quizzes', 25);
 		addCategory('Midterms', 30);
-		expect(getCategories().length).toBe(before + 2);
-		expect(getTotalWeight()).toBeGreaterThanOrEqual(55);
+		expect(getCategories().length).toBe(2);
+		expect(getTotalWeight()).toBe(55);
 	});
 
 	it('can update a category', () => {
-		const cat = getCategories().find((c) => c.name === 'Quizzes')!;
+		resetAll();
+		addCategory('Quizzes', 25);
+		const cat = getCategories()[0];
 		updateCategory(cat.id, 'Weekly Quizzes', 20);
 		const updated = getCategories().find((c) => c.id === cat.id)!;
 		expect(updated.name).toBe('Weekly Quizzes');
@@ -48,58 +60,77 @@ describe('grades store', () => {
 	});
 
 	it('can add grade entries', () => {
-		const cat = getCategories().find((c) => c.name === 'Weekly Quizzes')!;
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
 		addEntry('Quiz 1', cat.id, 95);
 		addEntry('Quiz 2', cat.id, 85);
-		expect(getEntries().length).toBeGreaterThanOrEqual(2);
+		expect(getEntries().length).toBe(2);
 	});
 
 	it('computes category averages', () => {
-		const cat = getCategories().find((c) => c.name === 'Weekly Quizzes')!;
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
+		addEntry('Quiz 1', cat.id, 95);
+		addEntry('Quiz 2', cat.id, 85);
 		const avg = getCategoryAverages().get(cat.id);
-		expect(avg).toBe(90); // (95 + 85) / 2
+		expect(avg).toBe(90);
 	});
 
 	it('computes overall grade', () => {
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
+		addEntry('Quiz 1', cat.id, 95);
+		addEntry('Quiz 2', cat.id, 85);
 		const grade = getOverallGrade();
-		expect(grade).not.toBeNaN();
-		expect(grade).toBeGreaterThan(0);
-		expect(grade).toBeLessThanOrEqual(100);
+		expect(grade).toBe(90);
 	});
 
 	it('can update an entry', () => {
-		const entry = getEntries().find((e) => e.name === 'Quiz 1')!;
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
+		addEntry('Quiz 1', cat.id, 80);
+		const entry = getEntries()[0];
 		updateEntry(entry.id, 'Quiz 1 (retake)', entry.categoryId, 100);
-		const updated = getEntries().find((e) => e.id === entry.id)!;
+		const updated = getEntries()[0];
 		expect(updated.name).toBe('Quiz 1 (retake)');
 		expect(updated.score).toBe(100);
 	});
 
 	it('can remove an entry', () => {
-		const before = getEntries().length;
-		const entry = getEntries()[0];
-		removeEntry(entry.id);
-		expect(getEntries().length).toBe(before - 1);
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
+		addEntry('Quiz 1', cat.id, 80);
+		addEntry('Quiz 2', cat.id, 90);
+		removeEntry(getEntries()[0].id);
+		expect(getEntries().length).toBe(1);
 	});
 
 	it('removing a category also removes its entries', () => {
-		const cat = getCategories().find((c) => c.name === 'Midterms')!;
-		addEntry('Midterm 1', cat.id, 70);
-		const beforeEntries = getEntries().length;
-		removeCategory(cat.id);
-		expect(getCategories().find((c) => c.id === cat.id)).toBeUndefined();
+		resetAll();
+		addCategory('Quizzes', 50);
+		addCategory('Midterms', 50);
+		const [q, m] = getCategories();
+		addEntry('Quiz 1', q.id, 80);
+		addEntry('Midterm 1', m.id, 70);
+		removeCategory(m.id);
+		expect(getCategories().length).toBe(1);
 		// The midterm entry should be gone
-		expect(getEntries().filter((e) => e.categoryId === cat.id).length).toBe(0);
-		expect(getEntries().length).toBe(beforeEntries - 1);
+		expect(getEntries().length).toBe(1);
+		expect(getEntries()[0].categoryId).toBe(q.id);
 	});
 
-	it('can export and import data', () => {
-		// Ensure we have some data
+	it('can export and import single-class data', () => {
+		resetAll();
 		addCategory('Finals', 40);
-		const cat = getCategories().find((c) => c.name === 'Finals')!;
+		const cat = getCategories()[0];
 		addEntry('Final Exam', cat.id, 88);
 
-		const json = exportData();
+		const json = exportSingleClassData();
 		const parsed = JSON.parse(json);
 		expect(parsed.categories).toBeDefined();
 		expect(parsed.entries).toBeDefined();
@@ -123,7 +154,127 @@ describe('grades store', () => {
 		addCategory('Temp', 10);
 		resetAll();
 		expect(getCategories().length).toBe(0);
-		expect(getEntries().length).toBe(0);
+		expect(getClasses().length).toBe(1);
+	});
+});
+
+describe('multi-class support', () => {
+	it('can add and switch between classes', () => {
+		resetAll();
+		addCategory('Chem Cat', 100);
+		addEntry('Chem Grade', getCategories()[0].id, 90);
+
+		const physicsId = addClass('Physics');
+		expect(getActiveClassId()).toBe(physicsId);
+		expect(getCategories().length).toBe(0); // Physics is empty
+
+		// Switch back to first class
+		const chemId = getClasses()[0].id;
+		setActiveClass(chemId);
+		expect(getCategories()[0].name).toBe('Chem Cat');
+		expect(getEntries()[0].name).toBe('Chem Grade');
+	});
+
+	it('can rename a class', () => {
+		resetAll();
+		const id = getClasses()[0].id;
+		renameClass(id, 'Chemistry');
+		expect(getClasses()[0].name).toBe('Chemistry');
+	});
+
+	it('can remove a class but not the last one', () => {
+		resetAll();
+		addClass('Physics');
+		expect(getClasses().length).toBe(2);
+
+		const first = getClasses()[0].id;
+		removeClass(first);
+		expect(getClasses().length).toBe(1);
+
+		// Cannot remove the last class
+		const last = getClasses()[0].id;
+		removeClass(last);
+		expect(getClasses().length).toBe(1);
+	});
+
+	it('switches active class when removing the active class', () => {
+		resetAll();
+		const secondId = addClass('Physics');
+		expect(getActiveClassId()).toBe(secondId);
+
+		removeClass(secondId);
+		expect(getActiveClassId()).toBe(getClasses()[0].id);
+	});
+
+	it('each class has independent data', () => {
+		resetAll();
+		addCategory('Chem Cat', 100);
+		setTargetGrade(85);
+
+		addClass('Physics');
+		addCategory('Phys Cat', 100);
+		setTargetGrade(90);
+
+		expect(getCategories()[0].name).toBe('Phys Cat');
+		expect(getTargetGrade()).toBe(90);
+
+		setActiveClass(getClasses()[0].id);
+		expect(getCategories()[0].name).toBe('Chem Cat');
+		expect(getTargetGrade()).toBe(85);
+	});
+
+	it('exports all classes in multi-class format', () => {
+		resetAll();
+		renameClass(getClasses()[0].id, 'Chemistry');
+		addCategory('Chem Cat', 100);
+		addClass('Physics');
+		addCategory('Phys Cat', 100);
+
+		const json = exportAllData();
+		const data = JSON.parse(json);
+		expect(data.classes.length).toBe(2);
+		expect(data.classes[0].name).toBe('Chemistry');
+		expect(data.classes[1].name).toBe('Physics');
+	});
+
+	it('imports multi-class format and replaces everything', () => {
+		resetAll();
+		renameClass(getClasses()[0].id, 'Chemistry');
+		addCategory('Chem Cat', 50);
+		addClass('Physics');
+		addCategory('Phys Cat', 50);
+
+		const json = exportAllData();
+
+		resetAll();
+		expect(getClasses().length).toBe(1);
+
+		importData(json);
+		expect(getClasses().length).toBe(2);
+		expect(getClasses().map((c) => c.name)).toEqual(['Chemistry', 'Physics']);
+	});
+
+	it('imports single-class format into active class', () => {
+		resetAll();
+		renameClass(getClasses()[0].id, 'Chemistry');
+		addClass('Physics');
+		// Active class is now Physics
+
+		const singleClassJson = JSON.stringify({
+			categories: [{ id: 'c1', name: 'Tests', weight: 100 }],
+			entries: [{ id: 'e1', name: 'Test 1', categoryId: 'c1', score: 75 }],
+			targetGrade: 80
+		});
+
+		importData(singleClassJson);
+		// Physics (active) should now have the imported data
+		expect(getCategories()[0].name).toBe('Tests');
+		expect(getEntries()[0].score).toBe(75);
+		expect(getTargetGrade()).toBe(80);
+
+		// Chemistry should be untouched
+		setActiveClass(getClasses()[0].id);
+		expect(getCategories().length).toBe(0);
 	});
 });
 
@@ -263,7 +414,7 @@ describe('reordering', () => {
 });
 
 describe('URL sharing', () => {
-	it('round-trips data through encode/decode', () => {
+	it('round-trips single-class data through encode/decode', () => {
 		resetAll();
 		addCategory('Quizzes', 40);
 		addCategory('Final', 60);
@@ -272,17 +423,28 @@ describe('URL sharing', () => {
 		addEntry('Final Exam', f.id, null);
 
 		const encoded = encodeToUrlParam();
-		expect(typeof encoded).toBe('string');
-		expect(encoded.length).toBeGreaterThan(0);
-
 		resetAll();
-		expect(getCategories().length).toBe(0);
-
 		loadFromUrlParam(encoded);
+
 		expect(getCategories().map((c) => c.name)).toEqual(['Quizzes', 'Final']);
 		expect(getEntries().length).toBe(2);
 		expect(getEntries().find((e) => e.name === 'Quiz 1')?.score).toBe(85);
 		expect(getEntries().find((e) => e.name === 'Final Exam')?.score).toBeNull();
+	});
+
+	it('round-trips multi-class data through encode/decode', () => {
+		resetAll();
+		renameClass(getClasses()[0].id, 'Chemistry');
+		addCategory('Chem Cat', 100);
+		addClass('Physics');
+		addCategory('Phys Cat', 100);
+
+		const encoded = encodeToUrlParam();
+		resetAll();
+		loadFromUrlParam(encoded);
+
+		expect(getClasses().length).toBe(2);
+		expect(getClasses().map((c) => c.name)).toEqual(['Chemistry', 'Physics']);
 	});
 
 	it('rejects invalid encoded data', () => {

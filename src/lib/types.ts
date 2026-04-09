@@ -10,3 +10,16 @@ export interface GradeEntry {
 	categoryId: string;
 	score: number | null; // null means "calculate what I need"
 }
+
+export interface ClassData {
+	id: string;
+	name: string;
+	categories: GradeCategory[];
+	entries: GradeEntry[];
+	targetGrade: number;
+}
+
+export interface AppData {
+	classes: ClassData[];
+	activeClassId: string;
+}

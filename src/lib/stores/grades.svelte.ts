@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { GradeCategory, GradeEntry } from '$lib/types';
+import type { GradeCategory, GradeEntry, ClassData, AppData } from '$lib/types';
 
 const STORAGE_KEY = 'grade-calculator-data';
 
@@ -8,55 +8,98 @@ function genId(): string {
 	return `id-${nextId++}-${Date.now()}`;
 }
 
-interface StoredData {
-	categories: GradeCategory[];
-	entries: GradeEntry[];
-	targetGrade?: number;
+function createEmptyClass(name: string): ClassData {
+	return { id: genId(), name, categories: [], entries: [], targetGrade: 70 };
 }
 
-function loadFromStorage(): StoredData {
-	if (!browser) return { categories: [], entries: [] };
+function isSingleClassData(data: unknown): data is ClassData {
+	return (
+		typeof data === 'object' &&
+		data !== null &&
+		Array.isArray((data as ClassData).categories) &&
+		Array.isArray((data as ClassData).entries)
+	);
+}
+
+function isValidAppData(data: unknown): data is AppData {
+	return (
+		typeof data === 'object' &&
+		data !== null &&
+		Array.isArray((data as AppData).classes) &&
+		(data as AppData).classes.length > 0
+	);
+}
+
+function normalizeClassData(data: ClassData): ClassData {
+	return {
+		id: data.id || genId(),
+		name: data.name || 'My Class',
+		categories: data.categories,
+		entries: data.entries,
+		targetGrade: data.targetGrade ?? 70
+	};
+}
+
+function loadFromStorage(): AppData {
+	if (!browser) {
+		const c = createEmptyClass('My Class');
+		return { classes: [c], activeClassId: c.id };
+	}
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
-		if (!raw) return { categories: [], entries: [] };
-		const data = JSON.parse(raw) as StoredData;
-		if (!Array.isArray(data.categories) || !Array.isArray(data.entries)) {
-			return { categories: [], entries: [] };
+		if (!raw) {
+			const c = createEmptyClass('My Class');
+			return { classes: [c], activeClassId: c.id };
 		}
-		return data;
+		const data = JSON.parse(raw);
+		if (isSingleClassData(data)) {
+			const cls = normalizeClassData(data);
+			return { classes: [cls], activeClassId: cls.id };
+		}
+		else if (isValidAppData(data)) {
+			return data;
+		}
+		const c = createEmptyClass('My Class');
+		return { classes: [c], activeClassId: c.id };
 	} catch {
-		return { categories: [], entries: [] };
+		const c = createEmptyClass('My Class');
+		return { classes: [c], activeClassId: c.id };
 	}
 }
 
 function saveToStorage(): void {
 	if (!browser) return;
-	localStorage.setItem(STORAGE_KEY, JSON.stringify({ categories, entries, targetGrade }));
+	const data: AppData = { classes, activeClassId };
+	localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 const initial = loadFromStorage();
-let categories = $state<GradeCategory[]>(initial.categories);
-let entries = $state<GradeEntry[]>(initial.entries);
-let targetGrade = $state<number>(initial.targetGrade ?? 70);
+let classes = $state<ClassData[]>(initial.classes);
+let activeClassId = $state<string>(initial.activeClassId);
 
 $effect.root(() => {
 	$effect(() => {
-		// Touch reactive values to track them, then persist
-		void categories.length;
-		void entries.length;
-		void JSON.stringify(categories);
-		void JSON.stringify(entries);
-		void targetGrade;
+		void JSON.stringify(classes);
+		void activeClassId;
 		saveToStorage();
 	});
 });
 
-const totalWeight = $derived(categories.reduce((sum, c) => sum + c.weight, 0));
+// --- Active class helpers ---
+
+function getActiveClass(): ClassData {
+	return classes.find((c) => c.id === activeClassId) ?? classes[0];
+}
+
+// --- Derived values (scoped to active class) ---
+
+const totalWeight = $derived(getActiveClass().categories.reduce((sum, c) => sum + c.weight, 0));
 
 const categoryAverages = $derived.by(() => {
+	const ac = getActiveClass();
 	const map = new Map<string, number>();
-	for (const cat of categories) {
-		const scored = entries.filter((e) => e.categoryId === cat.id && e.score !== null);
+	for (const cat of ac.categories) {
+		const scored = ac.entries.filter((e) => e.categoryId === cat.id && e.score !== null);
 		if (scored.length === 0) {
 			map.set(cat.id, NaN);
 		} else {
@@ -68,10 +111,11 @@ const categoryAverages = $derived.by(() => {
 });
 
 const overallGrade = $derived.by(() => {
-	if (categories.length === 0) return NaN;
+	const ac = getActiveClass();
+	if (ac.categories.length === 0) return NaN;
 	let weightedSum = 0;
 	let weightUsed = 0;
-	for (const cat of categories) {
+	for (const cat of ac.categories) {
 		const avg = categoryAverages.get(cat.id);
 		if (avg !== undefined && !Number.isNaN(avg)) {
 			weightedSum += avg * (cat.weight / 100);
@@ -83,12 +127,50 @@ const overallGrade = $derived.by(() => {
 	return (weightedSum / weightUsed) * 100;
 });
 
+// --- Class management ---
+
+export function getClasses(): ClassData[] {
+	return classes;
+}
+
+export function getActiveClassId(): string {
+	return activeClassId;
+}
+
+export function setActiveClass(id: string): void {
+	if (classes.some((c) => c.id === id)) {
+		activeClassId = id;
+	}
+}
+
+export function addClass(name: string): string {
+	const cls = createEmptyClass(name);
+	classes.push(cls);
+	activeClassId = cls.id;
+	return cls.id;
+}
+
+export function renameClass(id: string, name: string): void {
+	const cls = classes.find((c) => c.id === id);
+	if (cls) cls.name = name;
+}
+
+export function removeClass(id: string): void {
+	if (classes.length <= 1) return;
+	classes = classes.filter((c) => c.id !== id);
+	if (activeClassId === id) {
+		activeClassId = classes[0].id;
+	}
+}
+
+// --- Getters for active class data ---
+
 export function getCategories(): GradeCategory[] {
-	return categories;
+	return getActiveClass().categories;
 }
 
 export function getEntries(): GradeEntry[] {
-	return entries;
+	return getActiveClass().entries;
 }
 
 export function getTotalWeight(): number {
@@ -104,40 +186,51 @@ export function getOverallGrade(): number {
 }
 
 export function getTargetGrade(): number {
-	return targetGrade;
+	return getActiveClass().targetGrade;
 }
 
 export function setTargetGrade(value: number): void {
-	targetGrade = value;
+	getActiveClass().targetGrade = value;
 }
 
+// --- Category CRUD (active class) ---
+
 export function addCategory(name: string, weight: number): void {
-	categories.push({ id: genId(), name, weight });
+	getActiveClass().categories.push({ id: genId(), name, weight });
 }
 
 export function removeCategory(id: string): void {
-	categories = categories.filter((c) => c.id !== id);
-	entries = entries.filter((e) => e.categoryId !== id);
+	const ac = getActiveClass();
+	ac.categories = ac.categories.filter((c) => c.id !== id);
+	ac.entries = ac.entries.filter((e) => e.categoryId !== id);
 }
 
 export function updateCategory(id: string, name: string, weight: number): void {
-	const cat = categories.find((c) => c.id === id);
+	const cat = getActiveClass().categories.find((c) => c.id === id);
 	if (cat) {
 		cat.name = name;
 		cat.weight = weight;
 	}
 }
 
+// --- Entry CRUD (active class) ---
+
 export function addEntry(name: string, categoryId: string, score: number | null): void {
-	entries.push({ id: genId(), name, categoryId, score });
+	getActiveClass().entries.push({ id: genId(), name, categoryId, score });
 }
 
 export function removeEntry(id: string): void {
-	entries = entries.filter((e) => e.id !== id);
+	const ac = getActiveClass();
+	ac.entries = ac.entries.filter((e) => e.id !== id);
 }
 
-export function updateEntry(id: string, name: string, categoryId: string, score: number | null): void {
-	const entry = entries.find((e) => e.id === id);
+export function updateEntry(
+	id: string,
+	name: string,
+	categoryId: string,
+	score: number | null
+): void {
+	const entry = getActiveClass().entries.find((e) => e.id === id);
 	if (entry) {
 		entry.name = name;
 		entry.categoryId = categoryId;
@@ -145,59 +238,110 @@ export function updateEntry(id: string, name: string, categoryId: string, score:
 	}
 }
 
+// --- Reordering (active class) ---
+
 export function moveCategoryByIndex(fromIndex: number, toIndex: number): void {
+	const cats = getActiveClass().categories;
 	if (fromIndex === toIndex) return;
-	if (fromIndex < 0 || toIndex < 0 || fromIndex >= categories.length || toIndex >= categories.length)
-		return;
-	const [item] = categories.splice(fromIndex, 1);
-	categories.splice(toIndex, 0, item);
+	if (fromIndex < 0 || toIndex < 0 || fromIndex >= cats.length || toIndex >= cats.length) return;
+	const [item] = cats.splice(fromIndex, 1);
+	cats.splice(toIndex, 0, item);
 }
 
 export function moveEntryByIndex(fromIndex: number, toIndex: number): void {
+	const ents = getActiveClass().entries;
 	if (fromIndex === toIndex) return;
-	if (fromIndex < 0 || toIndex < 0 || fromIndex >= entries.length || toIndex >= entries.length)
-		return;
-	const [item] = entries.splice(fromIndex, 1);
-	entries.splice(toIndex, 0, item);
+	if (fromIndex < 0 || toIndex < 0 || fromIndex >= ents.length || toIndex >= ents.length) return;
+	const [item] = ents.splice(fromIndex, 1);
+	ents.splice(toIndex, 0, item);
 }
+
+// --- Reset ---
 
 export function resetAll(): void {
-	categories = [];
-	entries = [];
-	targetGrade = 70;
+	const c = createEmptyClass('My Class');
+	classes = [c];
+	activeClassId = c.id;
 }
 
-export function exportData(): string {
-	return JSON.stringify({ categories, entries, targetGrade }, null, 2);
+// --- Export / Import ---
+
+/** Export current class */
+export function exportSingleClassData(): string {
+	const ac = getActiveClass();
+	return JSON.stringify(
+		{ name: ac.name, categories: ac.categories, entries: ac.entries, targetGrade: ac.targetGrade },
+		null,
+		2
+	);
 }
 
+/** Export all classes */
+export function exportAllData(): string {
+	const data: AppData = { classes, activeClassId };
+	return JSON.stringify(data, null, 2);
+}
+
+/**
+ * Import data. Auto-detects format:
+ * - multi-class: replaces everything
+ * - flat single-class format: replaces the active class's data
+ */
 export function importData(json: string): void {
-	const data = JSON.parse(json) as StoredData;
-	if (!Array.isArray(data.categories) || !Array.isArray(data.entries)) {
-		throw new Error('Invalid data format');
+	const data = JSON.parse(json);
+	if (isSingleClassData(data)) {
+		const ac = getActiveClass();
+		ac.name = data.name;
+		ac.categories = data.categories;
+		ac.entries = data.entries;
+		ac.targetGrade = data.targetGrade ?? 70;
+		return;
 	}
-	categories = data.categories;
-	entries = data.entries;
-	targetGrade = data.targetGrade ?? 70;
+	else if (isValidAppData(data)) {
+		classes = data.classes;
+		activeClassId = data.activeClassId;
+		// Ensure activeClassId points to a valid class
+		if (!classes.some((c) => c.id === activeClassId)) {
+			activeClassId = classes[0].id;
+		}
+		return;
+	}
+	throw new Error('Invalid data format');
 }
 
+// --- URL sharing ---
+
+/** Encode all classes as URL param */
 export function encodeToUrlParam(): string {
-	return btoa(JSON.stringify({ categories, entries, targetGrade }));
+	const data: AppData = { classes, activeClassId };
+	return btoa(JSON.stringify(data));
 }
 
+/** Load from URL param. Auto-detects format. */
 export function loadFromUrlParam(encoded: string): void {
 	const json = atob(encoded);
-	const data = JSON.parse(json) as StoredData;
-	if (!Array.isArray(data.categories) || !Array.isArray(data.entries)) {
-		throw new Error('Invalid data format');
+	const data = JSON.parse(json);
+	if (isSingleClassData(data)) {
+		const cls = normalizeClassData(data);
+		classes = [cls];
+		activeClassId = cls.id;
+		return;
 	}
-	categories = data.categories;
-	entries = data.entries;
-	targetGrade = data.targetGrade ?? 70;
+	else if (isValidAppData(data)) {
+		classes = data.classes;
+		activeClassId = data.activeClassId;
+		if (!classes.some((c) => c.id === activeClassId)) {
+			activeClassId = classes[0].id;
+		}
+		return;
+	}
+	throw new Error('Invalid data format');
 }
 
+// --- What do I need ---
+
 export function getCalculateEntries(): GradeEntry[] {
-	return entries.filter((e) => e.score === null);
+	return getActiveClass().entries.filter((e) => e.score === null);
 }
 
 /**
@@ -208,7 +352,8 @@ export function getCalculateEntries(): GradeEntry[] {
  * (e.g. no calculate entries, or no categories with weight).
  */
 export function calculateNeededScore(targetGrade: number): number {
-	const calcEntries = entries.filter((e) => e.score === null);
+	const ac = getActiveClass();
+	const calcEntries = ac.entries.filter((e) => e.score === null);
 	if (calcEntries.length === 0) return NaN;
 
 	// For each category, compute:
@@ -225,8 +370,8 @@ export function calculateNeededScore(targetGrade: number): number {
 	let B = 0;
 	let weightUsed = 0;
 
-	for (const cat of categories) {
-		const catEntries = entries.filter((e) => e.categoryId === cat.id);
+	for (const cat of ac.categories) {
+		const catEntries = ac.entries.filter((e) => e.categoryId === cat.id);
 		if (catEntries.length === 0) continue;
 
 		const knownScored = catEntries.filter((e) => e.score !== null);

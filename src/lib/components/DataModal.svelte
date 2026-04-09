@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { exportData, importData } from '$lib/stores/grades.svelte';
+	import {
+		exportSingleClassData,
+		exportAllData,
+		importData,
+		getClasses,
+		getActiveClassId
+	} from '$lib/stores/grades.svelte';
 
 	interface Props {
 		onclose: () => void;
@@ -7,10 +13,28 @@
 
 	let { onclose }: Props = $props();
 
-	let json = $state(exportData());
+	type ExportScope = 'current' | 'all';
+	let scope = $state<ExportScope>('current');
+
+	function getExport(): string {
+		return scope === 'all' ? exportAllData() : exportSingleClassData();
+	}
+
+	function getActiveClassName(): string {
+		return getClasses().find((c) => c.id === getActiveClassId())?.name ?? 'class';
+	}
+
+	let json = $state(getExport());
 	let error = $state('');
 	let successMsg = $state('');
 	let fileInput = $state<HTMLInputElement | null>(null);
+
+	function handleScopeChange(newScope: ExportScope) {
+		scope = newScope;
+		json = getExport();
+		error = '';
+		successMsg = '';
+	}
 
 	function handleLoadFromJson() {
 		error = '';
@@ -25,12 +49,13 @@
 
 	function handleExportFile() {
 		// Refresh textarea to current state before downloading
-		json = exportData();
+		json = getExport();
 		const blob = new Blob([json], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = 'grades.json';
+		a.download =
+			scope === 'all' ? 'grades-all.json' : `grades-${getActiveClassName().toLowerCase().replace(/\s+/g, '-')}.json`;
 		a.click();
 		URL.revokeObjectURL(url);
 	}
@@ -102,6 +127,32 @@
 			{#if successMsg}
 				<div class="mb-3 rounded-md bg-green-50 p-3 text-sm text-green-700">{successMsg}</div>
 			{/if}
+
+			<div class="mb-3 flex items-center gap-4">
+				<span class="text-sm font-medium text-gray-700">Scope:</span>
+				<label class="flex items-center gap-1.5">
+					<input
+						type="radio"
+						name="scope"
+						value="current"
+						checked={scope === 'current'}
+						onchange={() => handleScopeChange('current')}
+						class="text-indigo-600 focus:ring-indigo-500"
+					/>
+					<span class="text-sm text-gray-600">Current class ({getActiveClassName()})</span>
+				</label>
+				<label class="flex items-center gap-1.5">
+					<input
+						type="radio"
+						name="scope"
+						value="all"
+						checked={scope === 'all'}
+						onchange={() => handleScopeChange('all')}
+						class="text-indigo-600 focus:ring-indigo-500"
+					/>
+					<span class="text-sm text-gray-600">All classes</span>
+				</label>
+			</div>
 
 			<label for="json-editor" class="block text-sm font-medium text-gray-700">
 				Grade data (JSON)

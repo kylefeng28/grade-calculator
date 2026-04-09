@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import ClassTabs from '$lib/components/ClassTabs.svelte';
 	import CategoryManager from '$lib/components/CategoryManager.svelte';
 	import GradeManager from '$lib/components/GradeManager.svelte';
 	import WhatDoINeed from '$lib/components/WhatDoINeed.svelte';
@@ -8,6 +9,7 @@
 	import {
 		getOverallGrade,
 		getCategories,
+		getClasses,
 		resetAll,
 		encodeToUrlParam,
 		loadFromUrlParam
@@ -35,7 +37,8 @@
 
 	async function handleCopyLink() {
 		const url = new URL(window.location.href.split('?')[0]);
-		url.searchParams.set('data', encodeToUrlParam());
+		const encoded = encodeToUrlParam();
+		url.searchParams.set('data', encoded);
 		await navigator.clipboard.writeText(url.toString());
 		linkCopied = true;
 		setTimeout(() => (linkCopied = false), 2000);
@@ -48,7 +51,7 @@
 		<div class="flex gap-2">
 			<button
 				onclick={handleCopyLink}
-				disabled={getCategories().length === 0}
+				disabled={getCategories().length === 0 && getClasses().length <= 1}
 				class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white"
 			>
 				{linkCopied ? 'Copied!' : 'Copy Link'}
@@ -61,13 +64,15 @@
 			</button>
 			<button
 				onclick={handleReset}
-				disabled={getCategories().length === 0}
+				disabled={getCategories().length === 0 && getClasses().length <= 1}
 				class="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-white"
 			>
 				Reset
 			</button>
 		</div>
 	</div>
+
+	<ClassTabs />
 
 	<div class="space-y-8">
 		<div class="rounded-lg bg-white p-6 shadow">
