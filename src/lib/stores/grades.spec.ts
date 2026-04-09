@@ -15,7 +15,9 @@ import {
 	exportData,
 	importData,
 	getCalculateEntries,
-	calculateNeededScore
+	calculateNeededScore,
+	moveCategoryByIndex,
+	moveEntryByIndex
 } from './grades.svelte';
 
 // Note: since the store uses module-level $state, tests share state.
@@ -212,5 +214,48 @@ describe('what do I need calculation', () => {
 		// overall = X * 50 / 50 = X
 		// target 70: X = 70
 		expect(calculateNeededScore(70)).toBeCloseTo(70, 1);
+	});
+});
+
+describe('reordering', () => {
+	it('can reorder categories', () => {
+		resetAll();
+		addCategory('A', 30);
+		addCategory('B', 40);
+		addCategory('C', 30);
+		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B', 'C']);
+
+		moveCategoryByIndex(0, 2);
+		expect(getCategories().map((c) => c.name)).toEqual(['B', 'C', 'A']);
+
+		moveCategoryByIndex(2, 0);
+		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B', 'C']);
+	});
+
+	it('can reorder entries', () => {
+		resetAll();
+		addCategory('Tests', 100);
+		const cat = getCategories()[0];
+		addEntry('E1', cat.id, 90);
+		addEntry('E2', cat.id, 80);
+		addEntry('E3', cat.id, 70);
+		expect(getEntries().map((e) => e.name)).toEqual(['E1', 'E2', 'E3']);
+
+		moveEntryByIndex(2, 0);
+		expect(getEntries().map((e) => e.name)).toEqual(['E3', 'E1', 'E2']);
+	});
+
+	it('no-ops for same index or out of bounds', () => {
+		resetAll();
+		addCategory('A', 50);
+		addCategory('B', 50);
+		moveCategoryByIndex(0, 0);
+		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B']);
+
+		moveCategoryByIndex(-1, 0);
+		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B']);
+
+		moveCategoryByIndex(0, 99);
+		expect(getCategories().map((c) => c.name)).toEqual(['A', 'B']);
 	});
 });

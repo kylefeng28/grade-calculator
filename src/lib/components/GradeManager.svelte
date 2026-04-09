@@ -4,7 +4,8 @@
 		getEntries,
 		addEntry,
 		removeEntry,
-		updateEntry
+		updateEntry,
+		moveEntryByIndex
 	} from '$lib/stores/grades.svelte';
 
 	let newName = $state('');
@@ -17,7 +18,12 @@
 	let editScore = $state(0);
 	let editIsCalculate = $state(false);
 
-	function handleAdd() {
+	// Drag state
+	let dragIndex = $state<number | null>(null);
+	let dropTargetIndex = $state<number | null>(null);
+
+	function handleAdd(e: Event) {
+		e.preventDefault();
 		const name = newName.trim();
 		if (!name || !newCategoryId) return;
 		addEntry(name, newCategoryId, newIsCalculate ? null : newScore);
@@ -47,6 +53,34 @@
 
 	function categoryName(categoryId: string): string {
 		return getCategories().find((c) => c.id === categoryId)?.name ?? 'Unknown';
+	}
+
+	function handleDragStart(index: number, e: DragEvent) {
+		dragIndex = index;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', '');
+		}
+	}
+
+	function handleDragOver(index: number, e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		dropTargetIndex = index;
+	}
+
+	function handleDrop(index: number, e: DragEvent) {
+		e.preventDefault();
+		if (dragIndex !== null) {
+			moveEntryByIndex(dragIndex, index);
+		}
+		dragIndex = null;
+		dropTargetIndex = null;
+	}
+
+	function handleDragEnd() {
+		dragIndex = null;
+		dropTargetIndex = null;
 	}
 </script>
 
@@ -110,6 +144,7 @@
 				<table class="min-w-full divide-y divide-gray-200">
 					<thead class="bg-gray-50">
 						<tr>
+							<th class="w-8 px-2 py-2"></th>
 							<th class="px-4 py-2 text-left text-sm font-medium text-gray-500">Name</th>
 							<th class="px-4 py-2 text-left text-sm font-medium text-gray-500">Category</th>
 							<th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Score</th>
@@ -117,9 +152,10 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200 bg-white">
-						{#each getEntries() as entry (entry.id)}
+						{#each getEntries() as entry, i (entry.id)}
 							{#if editingId === entry.id}
 								<tr>
+									<td class="w-8 px-2 py-2"></td>
 									<td class="px-4 py-2">
 										<input
 											type="text"
@@ -170,7 +206,26 @@
 									</td>
 								</tr>
 							{:else}
-								<tr class={entry.score === null ? 'bg-amber-50' : ''}>
+								<tr
+									draggable="true"
+									ondragstart={(e) => handleDragStart(i, e)}
+									ondragover={(e) => handleDragOver(i, e)}
+									ondrop={(e) => handleDrop(i, e)}
+									ondragend={handleDragEnd}
+									class={[
+										entry.score === null ? 'bg-amber-50' : '',
+										'transition-colors',
+										dragIndex === i ? 'opacity-50' : '',
+										dropTargetIndex === i && dragIndex !== i
+											? 'border-t-2 border-t-indigo-400'
+											: ''
+									].join(' ')}
+								>
+									<td class="w-8 cursor-grab px-2 py-2 text-center text-gray-400 active:cursor-grabbing">
+										<svg class="inline h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+											<path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
+										</svg>
+									</td>
 									<td class="px-4 py-2 text-sm text-gray-900">{entry.name}</td>
 									<td class="px-4 py-2 text-sm text-gray-600">{categoryName(entry.categoryId)}</td>
 									<td class="px-4 py-2 text-right text-sm">

@@ -134,6 +134,22 @@ export function updateEntry(id: string, name: string, categoryId: string, score:
 	}
 }
 
+export function moveCategoryByIndex(fromIndex: number, toIndex: number): void {
+	if (fromIndex === toIndex) return;
+	if (fromIndex < 0 || toIndex < 0 || fromIndex >= categories.length || toIndex >= categories.length)
+		return;
+	const [item] = categories.splice(fromIndex, 1);
+	categories.splice(toIndex, 0, item);
+}
+
+export function moveEntryByIndex(fromIndex: number, toIndex: number): void {
+	if (fromIndex === toIndex) return;
+	if (fromIndex < 0 || toIndex < 0 || fromIndex >= entries.length || toIndex >= entries.length)
+		return;
+	const [item] = entries.splice(fromIndex, 1);
+	entries.splice(toIndex, 0, item);
+}
+
 export function resetAll(): void {
 	categories = [];
 	entries = [];

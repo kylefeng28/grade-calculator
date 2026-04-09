@@ -5,7 +5,8 @@
 		getCategoryAverages,
 		addCategory,
 		removeCategory,
-		updateCategory
+		updateCategory,
+		moveCategoryByIndex
 	} from '$lib/stores/grades.svelte';
 
 	let newName = $state('');
@@ -14,7 +15,12 @@
 	let editName = $state('');
 	let editWeight = $state(0);
 
-	function handleAdd() {
+	// Drag state
+	let dragIndex = $state<number | null>(null);
+	let dropTargetIndex = $state<number | null>(null);
+
+	function handleAdd(e: Event) {
+		e.preventDefault();
 		const name = newName.trim();
 		if (!name || newWeight <= 0) return;
 		addCategory(name, newWeight);
@@ -37,6 +43,34 @@
 
 	function cancelEdit() {
 		editingId = null;
+	}
+
+	function handleDragStart(index: number, e: DragEvent) {
+		dragIndex = index;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', '');
+		}
+	}
+
+	function handleDragOver(index: number, e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+		dropTargetIndex = index;
+	}
+
+	function handleDrop(index: number, e: DragEvent) {
+		e.preventDefault();
+		if (dragIndex !== null) {
+			moveCategoryByIndex(dragIndex, index);
+		}
+		dragIndex = null;
+		dropTargetIndex = null;
+	}
+
+	function handleDragEnd() {
+		dragIndex = null;
+		dropTargetIndex = null;
 	}
 </script>
 
@@ -78,6 +112,7 @@
 			<table class="min-w-full divide-y divide-gray-200">
 				<thead class="bg-gray-50">
 					<tr>
+						<th class="w-8 px-2 py-2"></th>
 						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500">Category</th>
 						<th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Weight</th>
 						<th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Average</th>
@@ -85,9 +120,10 @@
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200 bg-white">
-					{#each getCategories() as cat (cat.id)}
+					{#each getCategories() as cat, i (cat.id)}
 						{#if editingId === cat.id}
 							<tr>
+								<td class="w-8 px-2 py-2"></td>
 								<td class="px-4 py-2">
 									<input
 										type="text"
@@ -121,7 +157,25 @@
 								</td>
 							</tr>
 						{:else}
-							<tr>
+							<tr
+								draggable="true"
+								ondragstart={(e) => handleDragStart(i, e)}
+								ondragover={(e) => handleDragOver(i, e)}
+								ondrop={(e) => handleDrop(i, e)}
+								ondragend={handleDragEnd}
+								class={[
+									'transition-colors',
+									dragIndex === i ? 'opacity-50' : '',
+									dropTargetIndex === i && dragIndex !== i
+										? 'border-t-2 border-t-indigo-400'
+										: ''
+								].join(' ')}
+							>
+								<td class="w-8 cursor-grab px-2 py-2 text-center text-gray-400 active:cursor-grabbing">
+									<svg class="inline h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+										<path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" />
+									</svg>
+								</td>
 								<td class="px-4 py-2 text-sm text-gray-900">{cat.name}</td>
 								<td class="px-4 py-2 text-right text-sm text-gray-900">{cat.weight}%</td>
 								<td class="px-4 py-2 text-right text-sm text-gray-600">
