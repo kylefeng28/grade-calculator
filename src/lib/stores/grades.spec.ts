@@ -10,7 +10,10 @@ import {
 	updateCategory,
 	addEntry,
 	removeEntry,
-	updateEntry
+	updateEntry,
+	resetAll,
+	exportData,
+	importData
 } from './grades.svelte';
 
 // Note: since the store uses module-level $state, tests share state.
@@ -82,5 +85,38 @@ describe('grades store', () => {
 		// The midterm entry should be gone
 		expect(getEntries().filter((e) => e.categoryId === cat.id).length).toBe(0);
 		expect(getEntries().length).toBe(beforeEntries - 1);
+	});
+
+	it('can export and import data', () => {
+		// Ensure we have some data
+		addCategory('Finals', 40);
+		const cat = getCategories().find((c) => c.name === 'Finals')!;
+		addEntry('Final Exam', cat.id, 88);
+
+		const json = exportData();
+		const parsed = JSON.parse(json);
+		expect(parsed.categories).toBeDefined();
+		expect(parsed.entries).toBeDefined();
+
+		// Reset, then import
+		resetAll();
+		expect(getCategories().length).toBe(0);
+		expect(getEntries().length).toBe(0);
+
+		importData(json);
+		expect(getCategories().find((c) => c.name === 'Finals')).toBeDefined();
+		expect(getEntries().find((e) => e.name === 'Final Exam')).toBeDefined();
+	});
+
+	it('importData rejects invalid data', () => {
+		expect(() => importData('not json')).toThrow();
+		expect(() => importData('{"categories": "bad"}')).toThrow();
+	});
+
+	it('resetAll clears everything', () => {
+		addCategory('Temp', 10);
+		resetAll();
+		expect(getCategories().length).toBe(0);
+		expect(getEntries().length).toBe(0);
 	});
 });
