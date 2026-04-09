@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CategoryManager from '$lib/components/CategoryManager.svelte';
 	import GradeManager from '$lib/components/GradeManager.svelte';
+	import WhatDoINeed from '$lib/components/WhatDoINeed.svelte';
 	import DataModal from '$lib/components/DataModal.svelte';
 	import {
 		getOverallGrade,
@@ -45,6 +46,8 @@
 		<div class="rounded-lg bg-white p-6 shadow">
 			<GradeManager />
 		</div>
+
+		<WhatDoINeed />
 
 		{#if !Number.isNaN(getOverallGrade())}
 			<div class="rounded-lg bg-indigo-50 p-6 shadow">

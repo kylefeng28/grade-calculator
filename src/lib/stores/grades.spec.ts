@@ -13,7 +13,9 @@ import {
 	updateEntry,
 	resetAll,
 	exportData,
-	importData
+	importData,
+	getCalculateEntries,
+	calculateNeededScore
 } from './grades.svelte';
 
 // Note: since the store uses module-level $state, tests share state.
@@ -118,5 +120,97 @@ describe('grades store', () => {
 		resetAll();
 		expect(getCategories().length).toBe(0);
 		expect(getEntries().length).toBe(0);
+	});
+});
+
+describe('what do I need calculation', () => {
+	it('returns NaN when there are no calculate entries', () => {
+		resetAll();
+		addCategory('Quizzes', 100);
+		const cat = getCategories()[0];
+		addEntry('Quiz 1', cat.id, 80);
+		expect(getCalculateEntries().length).toBe(0);
+		expect(calculateNeededScore(70)).toBeNaN();
+	});
+
+	it('calculates needed score for a single unknown', () => {
+		resetAll();
+		// Quizzes 25%, Midterms 30%, Final 25%, Assignments 20%
+		addCategory('Quizzes', 25);
+		addCategory('Midterms', 30);
+		addCategory('Final Exam', 25);
+		addCategory('Assignments', 20);
+		const [quizzes, midterms, finalExam, assignments] = getCategories();
+
+		addEntry('Quiz 1', quizzes.id, 95);
+		addEntry('Quiz 2', quizzes.id, 60);
+		addEntry('Midterm 1', midterms.id, 60);
+		addEntry('Assignment 1', assignments.id, 80);
+		// Final is unknown
+		addEntry('Final', finalExam.id, null);
+
+		expect(getCalculateEntries().length).toBe(1);
+
+		// Manual calculation:
+		// quiz avg = 77.5, midterm avg = 60, assignments avg = 80
+		// known contribution = 77.5*0.25 + 60*0.30 + 80*0.20 = 19.375 + 18 + 16 = 53.375
+		// final contribution = X * 0.25
+		// total weight = 100, so overall = 53.375 + 0.25*X
+		// For target 70: 0.70 = 53.375/100 + 0.25*X/100 ... wait, let me redo
+		// overall = (77.5*25 + 60*30 + X*25 + 80*20) / 100
+		//         = (1937.5 + 1800 + 25X + 1600) / 100
+		//         = (5337.5 + 25X) / 100
+		// For target 70: 70 = (5337.5 + 25X) / 100
+		// 7000 = 5337.5 + 25X
+		// 25X = 1662.5
+		// X = 66.5
+		const needed = calculateNeededScore(70);
+		expect(needed).toBeCloseTo(66.5, 1);
+	});
+
+	it('calculates when multiple entries are unknown in same category', () => {
+		resetAll();
+		addCategory('Tests', 100);
+		const cat = getCategories()[0];
+		addEntry('Test 1', cat.id, 80);
+		addEntry('Test 2', cat.id, null);
+		addEntry('Test 3', cat.id, null);
+
+		// avg = (80 + X + X) / 3, overall = avg * 1.0
+		// target 70: 70 = (80 + 2X) / 3 => 210 = 80 + 2X => X = 65
+		expect(calculateNeededScore(70)).toBeCloseTo(65, 1);
+	});
+
+	it('returns >100 when target is not achievable', () => {
+		resetAll();
+		addCategory('Tests', 100);
+		const cat = getCategories()[0];
+		addEntry('Test 1', cat.id, 20);
+		addEntry('Test 2', cat.id, null);
+		// avg = (20 + X) / 2, target 90: 90 = (20 + X)/2 => X = 160
+		expect(calculateNeededScore(90)).toBeCloseTo(160, 1);
+	});
+
+	it('returns negative when target is already surpassed', () => {
+		resetAll();
+		addCategory('Tests', 100);
+		const cat = getCategories()[0];
+		addEntry('Test 1', cat.id, 100);
+		addEntry('Test 2', cat.id, null);
+		// avg = (100 + X) / 2, target 30: 30 = (100+X)/2 => X = -40
+		expect(calculateNeededScore(30)).toBeCloseTo(-40, 1);
+	});
+
+	it('handles categories without any entries', () => {
+		resetAll();
+		addCategory('Quizzes', 50);
+		addCategory('Final', 50);
+		const [quizzes, final] = getCategories();
+		// Quizzes has no entries at all, Final has a calculate entry
+		addEntry('Final Exam', final.id, null);
+		// Only Final has entries, so weightUsed = 50
+		// overall = X * 50 / 50 = X
+		// target 70: X = 70
+		expect(calculateNeededScore(70)).toBeCloseTo(70, 1);
 	});
 });

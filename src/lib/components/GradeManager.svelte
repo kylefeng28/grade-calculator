@@ -10,29 +10,33 @@
 	let newName = $state('');
 	let newCategoryId = $state('');
 	let newScore = $state(0);
+	let newIsCalculate = $state(false);
 	let editingId = $state<string | null>(null);
 	let editName = $state('');
 	let editCategoryId = $state('');
 	let editScore = $state(0);
+	let editIsCalculate = $state(false);
 
 	function handleAdd() {
 		const name = newName.trim();
 		if (!name || !newCategoryId) return;
-		addEntry(name, newCategoryId, newScore);
+		addEntry(name, newCategoryId, newIsCalculate ? null : newScore);
 		newName = '';
 		newScore = 0;
+		newIsCalculate = false;
 	}
 
-	function startEdit(entry: { id: string; name: string; categoryId: string; score: number }) {
+	function startEdit(entry: { id: string; name: string; categoryId: string; score: number | null }) {
 		editingId = entry.id;
 		editName = entry.name;
 		editCategoryId = entry.categoryId;
-		editScore = entry.score;
+		editIsCalculate = entry.score === null;
+		editScore = entry.score ?? 0;
 	}
 
 	function saveEdit() {
 		if (editingId && editName.trim() && editCategoryId) {
-			updateEntry(editingId, editName.trim(), editCategoryId, editScore);
+			updateEntry(editingId, editName.trim(), editCategoryId, editIsCalculate ? null : editScore);
 			editingId = null;
 		}
 	}
@@ -85,9 +89,14 @@
 					min="0"
 					max="100"
 					step="any"
-					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+					disabled={newIsCalculate}
+					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400 sm:text-sm"
 				/>
 			</div>
+			<label class="flex items-center gap-1.5 pb-0.5">
+				<input type="checkbox" bind:checked={newIsCalculate} class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+				<span class="text-sm text-gray-600 whitespace-nowrap">Calculate</span>
+			</label>
 			<button
 				type="submit"
 				class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
@@ -129,14 +138,21 @@
 										</select>
 									</td>
 									<td class="px-4 py-2">
-										<input
-											type="number"
-											bind:value={editScore}
-											min="0"
-											max="100"
-											step="any"
-											class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-										/>
+										<div class="flex items-center gap-2">
+											<input
+												type="number"
+												bind:value={editScore}
+												min="0"
+												max="100"
+												step="any"
+												disabled={editIsCalculate}
+												class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400 sm:text-sm"
+											/>
+											<label class="flex items-center gap-1">
+												<input type="checkbox" bind:checked={editIsCalculate} class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+												<span class="text-xs text-gray-500 whitespace-nowrap">Calc</span>
+											</label>
+										</div>
 									</td>
 									<td class="px-4 py-2 text-right">
 										<button
@@ -154,10 +170,18 @@
 									</td>
 								</tr>
 							{:else}
-								<tr>
+								<tr class={entry.score === null ? 'bg-amber-50' : ''}>
 									<td class="px-4 py-2 text-sm text-gray-900">{entry.name}</td>
 									<td class="px-4 py-2 text-sm text-gray-600">{categoryName(entry.categoryId)}</td>
-									<td class="px-4 py-2 text-right text-sm text-gray-900">{entry.score}%</td>
+									<td class="px-4 py-2 text-right text-sm">
+										{#if entry.score === null}
+											<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+												Calculate
+											</span>
+										{:else}
+											<span class="text-gray-900">{entry.score}%</span>
+										{/if}
+									</td>
 									<td class="px-4 py-2 text-right">
 										<button
 											onclick={() => startEdit(entry)}

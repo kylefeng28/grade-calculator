@@ -8,5 +8,5 @@ export interface GradeEntry {
 	id: string;
 	name: string;
 	categoryId: string;
-	score: number; // percentage, e.g. 95
+	score: number | null; // null means "calculate what I need"
 }
