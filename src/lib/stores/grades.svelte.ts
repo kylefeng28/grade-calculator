@@ -458,11 +458,12 @@ export interface CalcBreakdown {
 }
 
 /**
- * Returns a step-by-step breakdown of the baseline "what do I need" calculation.
+ * Returns a step-by-step breakdown of the "what do I need" calculation.
+ * If scenario is provided, includes what-if scores from that scenario.
  * Returns null if there are no calculate entries.
  */
-export function getCalculationBreakdown(targetGrade: number): CalcBreakdown | null {
-	const calculation = calculateNeededScoreRaw(targetGrade);
+export function getCalculationBreakdown(targetGrade: number, opts: { scenario?: Scenario } = {}): CalcBreakdown | null {
+	const calculation = calculateNeededScoreRaw(targetGrade, opts);
 	if (Number.isNaN(calculation.result)) {
 		return null;
 	}
@@ -642,5 +643,15 @@ export function calculateNeededScoreForScenario(
 	const ac = getActiveClass();
 	const scenario = ac.scenarios.find((s) => s.id === scenarioId);
 	if (!scenario) return NaN;
-  return calculateNeededScore(targetGrade, { scenario })
+	return calculateNeededScore(targetGrade, { scenario });
+}
+
+export function getCalculationBreakdownForScenario(
+	targetGrade: number,
+	scenarioId: string
+): CalcBreakdown | null {
+	const ac = getActiveClass();
+	const scenario = ac.scenarios.find((s) => s.id === scenarioId);
+	if (!scenario) return null;
+	return getCalculationBreakdown(targetGrade, { scenario });
 }

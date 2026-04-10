@@ -6,6 +6,7 @@
 		setTargetGrade,
 		calculateNeededScore,
 		getCalculationBreakdown,
+		getCalculationBreakdownForScenario,
 		getScenarios,
 		getWhatIfEntries,
 		calculateNeededScoreForScenario,
@@ -20,6 +21,7 @@
 	const hasWhatIf = $derived(getWhatIfEntries().length > 0);
 
 	let showWork = $state(false);
+	let showScenarioWork = $state<Record<string, boolean>>({});
 
 	function categoryName(categoryId: string): string {
 		return getCategories().find((c) => c.id === categoryId)?.name ?? 'Unknown';
@@ -189,6 +191,7 @@
 		<!-- Per-scenario results -->
 		{#if hasWhatIf && scenarios.length > 0}
 			{#each scenarios as scenario (scenario.id)}
+				{@const scenarioBreakdown = getCalculationBreakdownForScenario(getTargetGrade(), scenario.id)}
 				<div class="mt-3 rounded-md border border-blue-200 bg-white p-4">
 					<div class="mb-2 flex items-center justify-between">
 						<p class="text-xs font-medium uppercase tracking-wide text-blue-600">{scenario.name}</p>
@@ -197,6 +200,18 @@
 						</span>
 					</div>
 					{@render scoreResult(calculateNeededScoreForScenario(getTargetGrade(), scenario.id), scenario.name)}
+
+					{#if scenarioBreakdown}
+						<button
+							onclick={() => (showScenarioWork = { ...showScenarioWork, [scenario.id]: !showScenarioWork[scenario.id] })}
+							class="mt-3 text-sm text-blue-700 underline decoration-blue-300 hover:text-blue-900"
+						>
+							{showScenarioWork[scenario.id] ? 'Hide calculation' : 'Show calculation'}
+						</button>
+						{#if showScenarioWork[scenario.id]}
+							{@render calculationWork(scenarioBreakdown)}
+						{/if}
+					{/if}
 				</div>
 			{/each}
 		{/if}
