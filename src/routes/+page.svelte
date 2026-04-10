@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import ClassTabs from '$lib/components/ClassTabs.svelte';
 	import CategoryManager from '$lib/components/CategoryManager.svelte';
 	import GradeManager from '$lib/components/GradeManager.svelte';
@@ -28,6 +29,8 @@
 			} catch {
 				// Ignore invalid data param
 			}
+			// Strip the query param so refreshing loads from localStorage
+			goto($page.url.pathname, { replaceState: true });
 		}
 	});
 
