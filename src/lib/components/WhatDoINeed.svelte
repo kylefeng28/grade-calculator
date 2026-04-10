@@ -155,6 +155,17 @@
 								</td>
 								<td class="py-1 font-mono text-gray-700">
 									{step.avgExpr}
+									{#if step.knownSum}
+										<span class="text-gray-400">
+											{#if step.totalCount == 1}
+												(= {step.knownSum})
+											{:else if step.totalCount > 1 && step.calcCount === 0}
+												(= {step.knownSum} / {step.totalCount} = {(step.knownSum / step.totalCount).toFixed(2)})
+											{:else}
+												(= ({step.knownSum} + {step.calcCount}X) / {step.totalCount})
+											{/if}
+										</span>
+									{/if}
 								</td>
 							</tr>
 						{/each}
