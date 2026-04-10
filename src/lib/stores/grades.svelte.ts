@@ -282,13 +282,13 @@ export function getScenarios(): Scenario[] {
 	return getActiveClass().scenarios;
 }
 
-export function addScenario(name: string): string {
+export function addScenario(name: string, scoresTemplate: Record<string, string> = {}): string {
 	const id = genId();
 	// Pre-populate with 0 for all existing what-if entries
 	const scores: Record<string, number> = {};
 	for (const entry of getActiveClass().entries) {
 		if (entry.mode === 'whatif') {
-			scores[entry.id] = 0;
+			scores[entry.id] = scoresTemplate[entry.id] || 0;
 		}
 	}
 	getActiveClass().scenarios.push({ id, name, scores });

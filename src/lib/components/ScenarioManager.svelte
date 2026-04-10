@@ -35,12 +35,6 @@
 		if (e.key === 'Escape') editingId = null;
 	}
 
-	function handleRemove(id: string, name: string) {
-		if (confirm(`Delete scenario "${name}"?`)) {
-			removeScenario(id);
-		}
-	}
-
 	function categoryName(categoryId: string): string {
 		return getCategories().find((c) => c.id === categoryId)?.name ?? 'Unknown';
 	}
@@ -93,17 +87,23 @@
 							</button>
 						{/if}
 						<div class="flex items-center gap-3">
-							<span class="text-sm text-gray-600">
-								Projected:
-								<span class="font-semibold text-blue-700">
-									{formatGrade(getScenarioOverallGrade(scenario.id))}
-								</span>
-							</span>
 							<button
-								onclick={() => handleRemove(scenario.id, scenario.name)}
-								class="text-sm text-red-500 hover:text-red-700"
+								onclick={() => addScenario(`${scenario.name} (copy)`, scenario.scores)}
+								class="ml-2 text-sm text-gray-500 hover:text-gray-700"
+								title="Duplicate"
 							>
-								Delete
+								<svg class="inline h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+								</svg>
+							</button>
+							<button
+								onclick={() => removeScenario(scenario.id)}
+								class="ml-2 text-gray-400 hover:text-red-600"
+								title="Remove"
+							>
+								<svg class="inline h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+								</svg>
 							</button>
 						</div>
 					</div>
@@ -137,6 +137,14 @@
 								{/each}
 							</tbody>
 						</table>
+					</div>
+					<div class="mt-3">
+						<span class="mt-3 text-sm text-gray-600">
+							Projected:
+							<span class="font-semibold text-blue-700">
+								{formatGrade(getScenarioOverallGrade(scenario.id))}
+							</span>
+						</span>
 					</div>
 				</div>
 			{/each}
