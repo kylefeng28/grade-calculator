@@ -2,6 +2,7 @@
 	import {
 		getCalculateEntries,
 		getCategories,
+		getEntries,
 		getTargetGrade,
 		setTargetGrade,
 		calculateNeededScore,
@@ -22,9 +23,67 @@
 
 	let showWork = $state(false);
 	let showScenarioWork = $state<Record<string, boolean>>({});
+	let showTradeoff = $state(false);
+	// Slider values for the first N-1 calc entries (0–100 each)
+	let sliderValues = $state<number[]>([]);
 
 	function categoryName(categoryId: string): string {
 		return getCategories().find((c) => c.id === categoryId)?.name ?? 'Unknown';
+	}
+
+	/**
+	 * Compute per-entry coefficients for the N-unknown trade-off sliders.
+	 * Each calc entry e in category c has coeff = (weight_c / 100) / totalCount_c
+	 * Constraint: Σ(coeff_i * X_i) = target - B
+	 * Sliders control X_1..X_{N-1}, last entry X_N is solved.
+	 */
+	function getTradeoffData(bd: CalcBreakdown) {
+		const entries = calcEntries;
+		if (entries.length < 2) return null;
+
+		// Build a map from categoryId -> { weight, totalCount } from breakdown steps
+		const catMap = new Map<string, { weight: number; totalCount: number }>();
+		for (const step of bd.steps) {
+			const cat = getCategories().find((c) => c.name === step.categoryName);
+			if (cat) {
+				catMap.set(cat.id, { weight: step.weight, totalCount: step.totalCount });
+			}
+		}
+
+		const coeffs = entries.map((e) => {
+			const catInfo = catMap.get(e.categoryId);
+			if (!catInfo) return 0;
+			return (catInfo.weight / 100) / catInfo.totalCount;
+		});
+
+		// All coefficients must be nonzero
+		if (coeffs.some((c) => c === 0)) return null;
+
+		const rhs = bd.target - bd.B;
+
+		return { entries, coeffs, rhs };
+	}
+
+	const tradeoff = $derived(breakdown ? getTradeoffData(breakdown) : null);
+
+	// When the baseline result or number of calc entries changes, reset sliders to the even-split value
+	$effect(() => {
+		void neededScore;
+		void calcEntries.length;
+		if (!Number.isNaN(neededScore) && calcEntries.length >= 2) {
+			const defaultVal = Math.min(100, Math.max(0, neededScore));
+			sliderValues = Array(calcEntries.length - 1).fill(defaultVal);
+		}
+	});
+
+	/** Solve for the last entry's score given slider values for the first N-1 entries */
+	function getLastScore(td: NonNullable<typeof tradeoff>, values: number[]): number {
+		const lastCoeff = td.coeffs[td.coeffs.length - 1];
+		let usedRhs = td.rhs;
+		for (let i = 0; i < values.length; i++) {
+			usedRhs -= td.coeffs[i] * values[i];
+		}
+		return usedRhs / lastCoeff;
 	}
 </script>
 
@@ -187,6 +246,69 @@
 				{/if}
 			{/if}
 		</div>
+
+		<!-- Trade-off sliders for 2+ unknowns -->
+		{#if tradeoff && !Number.isNaN(neededScore) && sliderValues.length === tradeoff.entries.length - 1}
+			{@const lastScore = getLastScore(tradeoff, sliderValues)}
+			{@const lastEntry = tradeoff.entries[tradeoff.entries.length - 1]}
+			<div class="mt-4 rounded-md border border-amber-200 bg-white p-4">
+				<div class="mb-3 flex items-center justify-between">
+					<p class="text-sm font-medium text-gray-700">Score trade-off</p>
+					<button
+						onclick={() => (showTradeoff = !showTradeoff)}
+						class="text-sm text-amber-700 underline decoration-amber-300 hover:text-amber-900"
+					>
+						{showTradeoff ? 'Hide' : 'Show'}
+					</button>
+				</div>
+
+				{#if showTradeoff}
+					<p class="mb-4 text-xs text-gray-500">
+						Drag the sliders to explore how scores can trade off while still hitting your target of {getTargetGrade()}%.
+						The last entry is calculated from the others.
+					</p>
+
+					<div class="space-y-3">
+						{#each sliderValues as _, i}
+							{@const entry = tradeoff.entries[i]}
+							<div>
+								<div class="mb-1 flex items-center justify-between">
+									<label for="tradeoff-slider-{i}" class="text-sm font-medium text-gray-700">
+										{entry.name}
+										<span class="text-gray-400">({categoryName(entry.categoryId)})</span>
+									</label>
+									<span class="text-sm font-semibold text-amber-700">{sliderValues[i].toFixed(1)}%</span>
+								</div>
+								<input
+									id="tradeoff-slider-{i}"
+									type="range"
+									min="0"
+									max="100"
+									step="0.5"
+									bind:value={sliderValues[i]}
+									class="w-full accent-amber-600"
+								/>
+							</div>
+						{/each}
+
+						<div class="flex items-center justify-between rounded-md bg-amber-50 px-3 py-2">
+							<span class="text-sm font-medium text-gray-700">
+								{lastEntry.name}
+								<span class="text-gray-400">({categoryName(lastEntry.categoryId)})</span>
+							</span>
+							<span class="text-sm font-semibold {lastScore > 100 ? 'text-red-600' : lastScore < 0 ? 'text-green-600' : 'text-amber-700'}">
+								{lastScore.toFixed(1)}%
+								{#if lastScore > 100}
+									<span class="font-normal text-red-500">(not achievable)</span>
+								{:else if lastScore < 0}
+									<span class="font-normal text-green-500">(any score works)</span>
+								{/if}
+							</span>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Per-scenario results -->
 		{#if hasWhatIf && scenarios.length > 0}
