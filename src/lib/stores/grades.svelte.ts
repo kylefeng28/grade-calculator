@@ -426,6 +426,91 @@ export function getWhatIfEntries(): GradeEntry[] {
 	return getActiveClass().entries.filter((e) => e.mode === 'whatif');
 }
 
+/** Per-category breakdown of the "what do I need" calculation */
+export interface CalcCategoryStep {
+	categoryName: string;
+	weight: number;
+	knownScores: { name: string; score: number }[];
+	calcCount: number;
+	totalCount: number;
+	/** The known sum of scores in this category */
+	knownSum: number;
+	/** Category average as a function of X: (knownSum + calcCount * X) / totalCount */
+	avgExpr: string;
+	/** Weighted contribution expression: avg * weight/100 */
+	contributionExpr: string;
+}
+
+/** Full breakdown of the "what do I need" calculation */
+export interface CalcBreakdown {
+	steps: CalcCategoryStep[];
+	weightUsed: number;
+	/** The linear equation: A * X + B = target */
+	A: number;
+	B: number;
+	target: number;
+	result: number;
+	targetGrade: number;
+	/** The overall equation string */
+	equation: string;
+	/** The solving steps as strings */
+	solveSteps: string[];
+}
+
+/**
+ * Returns a step-by-step breakdown of the baseline "what do I need" calculation.
+ * Returns null if there are no calculate entries.
+ */
+export function getCalculationBreakdown(targetGrade: number): CalcBreakdown | null {
+	const calculation = calculateNeededScoreRaw(targetGrade);
+	if (Number.isNaN(calculation.result)) {
+		return null;
+	}
+	const { A, B, steps: rawSteps, weightUsed, target, result } = calculation as CalcBreakdown;
+
+	const steps = [];
+	for (const step of rawSteps) {
+		const { weight, knownScores, knownSum, calcCount, totalCount } = step;
+
+		// Build readable expressions
+		const knownParts = knownScores.map((e) => e.toString());
+		const calcParts = Array(calcCount).fill('X');
+		const allParts = [...knownParts, ...calcParts];
+		const avgExpr = `(${allParts.join(' + ')}) / ${totalCount}`;
+		const contributionExpr = `${avgExpr} × ${weight}%`;
+
+		steps.push({
+			...step,
+			avgExpr,
+			contributionExpr
+		});
+	}
+
+	// Build equation strings
+	const termStrs = steps.map((s) => {
+		const knownPart = s.knownSum > 0 ? s.knownSum.toString() : '0';
+		if (s.calcCount > 0) {
+			const xPart = s.calcCount === 1 ? 'X' : `${s.calcCount}X`;
+			const numerator = s.knownSum > 0 ? `${knownPart} + ${xPart}` : xPart;
+			return `(${numerator}) / ${s.totalCount} × ${s.weight / 100}`;
+		}
+		return `${knownPart} / ${s.totalCount} × ${s.weight / 100}`;
+	});
+
+	const equation = `(${termStrs.join(' + ')}) / ${weightUsed / 100} × 100 = ${targetGrade}`;
+
+	const solveSteps: string[] = [];
+	solveSteps.push(`Weighted sum = ${A.toFixed(4)}X + ${B.toFixed(4)}`);
+	solveSteps.push(
+		`Overall = (${A.toFixed(4)}X + ${B.toFixed(4)}) / ${weightUsed / 100} × 100 = ${targetGrade}`
+	);
+	solveSteps.push(`${A.toFixed(4)}X + ${B.toFixed(4)} = ${target.toFixed(4)}`);
+	solveSteps.push(`${A.toFixed(4)}X = ${target.toFixed(4)} − ${B.toFixed(4)} = ${(target - B).toFixed(4)}`);
+	solveSteps.push(`X = ${(target - B).toFixed(4)} / ${A.toFixed(4)} = ${result.toFixed(2)}`);
+
+	return { steps, weightUsed, A, B, target, result, targetGrade, equation, solveSteps };
+}
+
 /**
  * Solves for the score X that all "calculate" entries need
  * so that the overall weighted grade equals `targetGrade`.
@@ -437,9 +522,13 @@ export function getWhatIfEntries(): GradeEntry[] {
  * (e.g. no calculate entries, or no categories with weight).
  */
 export function calculateNeededScore(targetGrade: number, { scenario }: { scenario?: Scenario } = {}): number {
+  return calculateNeededScoreRaw(targetGrade, { scenario }).result;
+}
+
+export function calculateNeededScoreRaw(targetGrade: number, { scenario }: { scenario?: Scenario } = {}): CalcBreakdown | { result: typeof NaN } {
 	const ac = getActiveClass();
 	const calcEntries = ac.entries.filter((e) => e.mode === 'calculate');
-	if (calcEntries.length === 0) return NaN;
+	if (calcEntries.length === 0) return { result: NaN };
 
 	// For each category, compute:
 	//   avg_i(X) = (knownSum + calcCount * X) / totalCount
@@ -451,6 +540,7 @@ export function calculateNeededScore(targetGrade: number, { scenario }: { scenar
 	// This is linear in X: overall(X) = A * X + B
 	// Solve: X = (targetGrade/100 - B) / A
 
+	const steps: CalcCategoryStep[] = [];
 	let A = 0;
 	let B = 0;
 	let weightUsed = 0;
@@ -478,15 +568,33 @@ export function calculateNeededScore(targetGrade: number, { scenario }: { scenar
 		B += (knownSum * w) / totalCount;
 		A += (calcCount * w) / totalCount;
 		weightUsed += cat.weight;
+
+		steps.push({
+			categoryName: cat.name,
+			weight: cat.weight,
+			knownScores: knownScored,
+			knownSum,
+			calcCount,
+			totalCount,
+		});
 	}
 
-	if (weightUsed === 0 || A === 0) return NaN;
+	if (weightUsed === 0 || A === 0) return { result: NaN };
 
 	// overall = ((A*X + B) / weightUsed) * 100
 	// targetGrade = ((A*X + B) / weightUsed) * 100
 	// targetGrade * weightUsed / 100 = A*X + B
 	const target = (targetGrade * weightUsed) / 100;
-	return (target - B) / A;
+	const result = (target - B) / A;
+
+	return {
+		A,
+		B,
+		steps,
+		weightUsed,
+		target,
+		result
+	}
 }
 
 /**
