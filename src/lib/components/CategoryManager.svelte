@@ -191,14 +191,27 @@
 									<button
 										onclick={() => startEdit(cat)}
 										class="text-sm text-indigo-600 hover:text-indigo-800"
+										title="Edit"
 									>
 										Edit
 									</button>
 									<button
-										onclick={() => removeCategory(cat.id)}
-										class="ml-2 text-sm text-red-600 hover:text-red-800"
+										onclick={() => addCategory(cat.name + ' (copy)', cat.weight)}
+										class="ml-2 text-sm text-gray-500 hover:text-gray-700"
+										title="Duplicate"
 									>
-										Remove
+										<svg class="inline h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+										</svg>
+									</button>
+									<button
+										onclick={() => removeCategory(cat.id)}
+										class="ml-2 text-gray-400 hover:text-red-600"
+										title="Remove"
+									>
+										<svg class="inline h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+										</svg>
 									</button>
 								</td>
 							</tr>
