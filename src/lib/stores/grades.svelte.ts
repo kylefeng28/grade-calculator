@@ -429,12 +429,14 @@ export function getWhatIfEntries(): GradeEntry[] {
 /**
  * Solves for the score X that all "calculate" entries need
  * so that the overall weighted grade equals `targetGrade`.
- * This is the baseline calculation — what-if entries are excluded.
+ *
+ * If scenario is provided, this will apply the given scenario's what-if scores.
+ * Otherwise, treat as the baseline calculation and exclude what-if entries.
  *
  * Returns the needed score, or NaN if it can't be solved
  * (e.g. no calculate entries, or no categories with weight).
  */
-export function calculateNeededScore(targetGrade: number): number {
+export function calculateNeededScore(targetGrade: number, { scenario }: { scenario?: Scenario } = {}): number {
 	const ac = getActiveClass();
 	const calcEntries = ac.entries.filter((e) => e.mode === 'calculate');
 	if (calcEntries.length === 0) return NaN;
@@ -455,15 +457,20 @@ export function calculateNeededScore(targetGrade: number): number {
 
 	for (const cat of ac.categories) {
 		// Exclude what-if entries from baseline calculation
-		const catEntries = ac.entries.filter(
-			(e) => e.categoryId === cat.id && e.mode !== 'whatif'
+		const catEntries = ac.entries.filter((e) =>
+			e.categoryId === cat.id &&
+			(e.mode === 'whatif' ? (scenario && scenario.scores[e.id] !== undefined) : true)
 		);
 		if (catEntries.length === 0) continue;
 
-		const knownScored = catEntries.filter((e) => e.mode === 'normal' && e.score !== null);
-		const knownSum = knownScored.reduce((sum, e) => sum + e.score!, 0);
+		const knownScored = catEntries
+		  .map((e) => (e.mode === 'normal' && e.score) || (e.mode === 'whatif' && scenario?.scores[e.id]) || null)
+		  .filter((e) => e != null);
+		const knownCount = knownScored.length;
+		const knownSum = knownScored.reduce((sum, e) => sum + e!, 0);
 		const calcCount = catEntries.filter((e) => e.mode === 'calculate').length;
-		const totalCount = catEntries.length;
+		const totalCount = knownCount + calcCount;
+
 		const w = cat.weight / 100;
 
 		// avg_i(X) = (knownSum + calcCount * X) / totalCount
@@ -520,63 +527,12 @@ export function getScenarioOverallGrade(scenarioId: string): number {
 	return (weightedSum / weightUsed) * 100;
 }
 
-/**
- * Solves for the score X that all "calculate" entries need so that the
- * overall weighted grade equals `targetGrade`, given a specific scenario's
- * what-if scores applied.
- *
- * Returns the needed score, or NaN if it can't be solved.
- */
 export function calculateNeededScoreForScenario(
 	targetGrade: number,
 	scenarioId: string
-): number {
+) {
 	const ac = getActiveClass();
 	const scenario = ac.scenarios.find((s) => s.id === scenarioId);
 	if (!scenario) return NaN;
-
-	const calcEntries = ac.entries.filter((e) => e.mode === 'calculate');
-	if (calcEntries.length === 0) return NaN;
-
-	let A = 0;
-	let B = 0;
-	let weightUsed = 0;
-
-	for (const cat of ac.categories) {
-		const catEntries = ac.entries.filter((e) => e.categoryId === cat.id);
-		if (catEntries.length === 0) continue;
-
-		let knownSum = 0;
-		let calcCount = 0;
-		let totalCount = 0;
-
-		for (const e of catEntries) {
-			if (e.mode === 'normal' && e.score !== null) {
-				knownSum += e.score;
-				totalCount++;
-			} else if (e.mode === 'calculate') {
-				calcCount++;
-				totalCount++;
-			} else if (e.mode === 'whatif') {
-				const scenarioScore = scenario.scores[e.id];
-				if (scenarioScore !== undefined) {
-					knownSum += scenarioScore;
-					totalCount++;
-				}
-				// If no score in this scenario, entry is simply not counted
-			}
-		}
-
-		if (totalCount === 0) continue;
-
-		const w = cat.weight / 100;
-		B += (knownSum * w) / totalCount;
-		A += (calcCount * w) / totalCount;
-		weightUsed += cat.weight;
-	}
-
-	if (weightUsed === 0 || A === 0) return NaN;
-
-	const target = (targetGrade * weightUsed) / 100;
-	return (target - B) / A;
+  return calculateNeededScore(targetGrade, { scenario })
 }
