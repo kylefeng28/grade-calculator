@@ -274,7 +274,7 @@
 											Edit
 										</button>
 										<button
-											onclick={() => addEntry(entry.name + ' (copy)', entry.categoryId, entry.score, entry.mode)}
+											onclick={() => addEntry(entry.name + ' (copy)', entry.categoryId, entry.score, entry.mode, i+1)}
 											class="ml-2 text-sm text-gray-500 hover:text-gray-700"
 											title="Duplicate"
 										>

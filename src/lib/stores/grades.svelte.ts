@@ -215,8 +215,13 @@ export function setTargetGrade(value: number): void {
 
 // --- Category CRUD (active class) ---
 
-export function addCategory(name: string, weight: number): void {
-	getActiveClass().categories.push({ id: genId(), name, weight });
+export function addCategory(name: string, weight: number, index: number | null = null): void {
+	const newCategory = { id: genId(), name, weight };
+	if (index) {
+		getActiveClass().categories.splice(index, 0, newCategory);
+	} else {
+		getActiveClass().categories.push(newCategory);
+	}
 }
 
 export function removeCategory(id: string): void {
@@ -239,9 +244,15 @@ export function addEntry(
 	name: string,
 	categoryId: string,
 	score: number | null,
-	mode: EntryMode = 'normal'
+	mode: EntryMode = 'normal',
+	index: number | null = null,
 ): void {
-	getActiveClass().entries.push({ id: genId(), name, categoryId, score, mode });
+	const newEntry = { id: genId(), name, categoryId, score, mode };
+	if (index) {
+		getActiveClass().entries.splice(index, 0, newEntry);
+	} else {
+		getActiveClass().entries.push(newEntry);
+	}
 }
 
 export function removeEntry(id: string): void {
@@ -282,13 +293,13 @@ export function getScenarios(): Scenario[] {
 	return getActiveClass().scenarios;
 }
 
-export function addScenario(name: string, scoresTemplate: Record<string, string> = {}): string {
+export function addScenario(name: string, scoresTemplate: Record<string, number> = {}): string {
 	const id = genId();
 	// Pre-populate with 0 for all existing what-if entries
 	const scores: Record<string, number> = {};
 	for (const entry of getActiveClass().entries) {
 		if (entry.mode === 'whatif') {
-			scores[entry.id] = scoresTemplate[entry.id] || 0;
+			scores[entry.id] = scoresTemplate[entry.id] ?? 0;
 		}
 	}
 	getActiveClass().scenarios.push({ id, name, scores });

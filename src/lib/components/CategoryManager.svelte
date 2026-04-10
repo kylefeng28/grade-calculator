@@ -196,7 +196,7 @@
 										Edit
 									</button>
 									<button
-										onclick={() => addCategory(cat.name + ' (copy)', cat.weight)}
+										onclick={() => addCategory(cat.name + ' (copy)', cat.weight, i+1)}
 										class="ml-2 text-sm text-gray-500 hover:text-gray-700"
 										title="Duplicate"
 									>
